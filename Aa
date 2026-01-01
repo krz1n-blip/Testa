@@ -1,54 +1,108 @@
--- // TAMBAHAN FITUR PEMBELAJARAN (Silent Aim & Ammo) //
+-- // D-DAY HUB FIXED BY AI (2026) //
+-- // Aimbot FOV Tetap di Tengah & GUI Terintegrasi //
 
--- // 1. Variabel Kontrol Baru
-_G.SilentAim = false
-_G.InfAmmo = false
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
 
--- // 2. Logika Silent Aim (Redirecting Bullets)
--- Logika ini bekerja dengan membelokkan arah peluru (Raycast) menuju target
-local mt = getrawmetatable(game)
-local oldNamecall = mt.__namecall
-setreadonly(mt, false)
+-- // 1. LOGIKA FOV (Layar Tengah)
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Visible = true
+FOVCircle.Thickness = 1.5
+FOVCircle.Color = Color3.fromRGB(120, 1, 255) -- Warna Ungu sesuai Tema
+FOVCircle.Transparency = 1
+FOVCircle.Filled = false
 
-mt.__namecall = newcclosure(function(self, ...)
-    local method = getnamecallmethod()
-    local args = {...}
+-- // 2. VARIABEL KONTROL
+_G.AimbotEnabled = false
+_G.FOVSize = 120
 
-    if _G.SilentAim and method == "FireServer" and self.Name == "ShootEvent" then -- Ganti "ShootEvent" sesuai remote game
-        local target = GetTarget() -- Mengambil target dari fungsi GetTarget() yang sudah ada sebelumnya
-        if target and target.Character and target.Character:FindFirstChild("Head") then
-            -- Mengarahkan posisi tembakan langsung ke kepala target di sisi server
-            args[1] = target.Character.Head.Position 
-            return self:FireServer(unpack(args))
-        end
-    end
-    return oldNamecall(self, ...)
+-- // 3. GUI SETUP (Disederhanakan & Diperbaiki)
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Parent = game:GetService("CoreGui") -- Agar tidak hilang saat mati
+ScreenGui.ResetOnSpawn = false
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Parent = ScreenGui
+MainFrame.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+MainFrame.Position = UDim2.new(0.3, 0, 0.3, 0)
+MainFrame.Size = UDim2.new(0, 300, 0, 200)
+MainFrame.Active = true
+MainFrame.Draggable = true -- Agar menu bisa digeser
+
+local UICorner = Instance.new("UICorner")
+UICorner.Parent = MainFrame
+
+local Title = Instance.new("TextLabel")
+Title.Parent = MainFrame
+Title.Size = UDim2.new(1, 0, 0, 40)
+Title.Text = "D-DAY HUB - FIXED"
+Title.TextColor3 = Color3.fromRGB(120, 1, 255)
+Title.BackgroundTransparency = 1
+Title.Font = Enum.Font.LuckiestGuy
+Title.TextSize = 25
+
+-- // 4. TOMBOL AKTIVASI AIMBOT
+local ToggleBtn = Instance.new("TextButton")
+ToggleBtn.Parent = MainFrame
+ToggleBtn.Size = UDim2.new(0.8, 0, 0, 40)
+ToggleBtn.Position = UDim2.new(0.1, 0, 0.3, 0)
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+ToggleBtn.Text = "Enable Aimbot: OFF"
+ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleBtn.Font = Enum.Font.FredokaOne
+
+Instance.new("UICorner", ToggleBtn)
+
+ToggleBtn.MouseButton1Click:Connect(function()
+    _G.AimbotEnabled = not _G.AimbotEnabled
+    ToggleBtn.Text = "Enable Aimbot: " .. (_G.AimbotEnabled and "ON" or "OFF")
+    ToggleBtn.BackgroundColor3 = _G.AimbotEnabled and Color3.fromRGB(120, 1, 255) or Color3.fromRGB(80, 80, 80)
 end)
-setreadonly(mt, true)
 
--- // 3. Logika Infinite Ammo (Memory Patching)
--- Teknik ini mencari nilai amunisi di dalam script senjata dan mencegahnya berkurang
-RunService.Heartbeat:Connect(function()
-    if _G.InfAmmo then
-        -- Mencari folder alat/senjata di karakter
-        for _, tool in pairs(LocalPlayer.Character:GetChildren()) do
-            if tool:IsA("Tool") and tool:FindFirstChild("Ammo") then
-                -- Memaksa nilai Ammo tetap di angka 999
-                tool.Ammo.Value = 999
+-- // 5. FUNGSI MENCARI TARGET (Filter Tengah Layar)
+local function GetClosestTarget()
+    local Center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    local Target = nil
+    local MaxDist = _G.FOVSize
+
+    for _, v in pairs(Players:GetPlayers()) do
+        if v ~= LocalPlayer and v.Character and v.Character:FindFirstChild("Head") then
+            -- Cek apakah musuh (Team Check)
+            if v.Team ~= LocalPlayer.Team then
+                local ScreenPos, OnScreen = Camera:WorldToViewportPoint(v.Character.Head.Position)
+                if OnScreen then
+                    local Dist = (Vector2.new(ScreenPos.X, ScreenPos.Y) - Center).Magnitude
+                    if Dist < MaxDist then
+                        MaxDist = Dist
+                        Target = v
+                    end
+                end
             end
         end
     end
+    return Target
+end
+
+-- // 6. LOOPING UTAMA (PENTING: Agar tetap di tengah)
+RunService.RenderStepped:Connect(function()
+    -- Update Lingkaran FOV selalu ke tengah layar
+    local CenterPos = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    FOVCircle.Position = CenterPos
+    FOVCircle.Radius = _G.FOVSize
+    
+    -- Logika Aimbot
+    if _G.AimbotEnabled then
+        local Target = GetClosestTarget()
+        if Target then
+            -- Mengunci kamera ke kepala target
+            Camera.CFrame = CFrame.new(Camera.CFrame.Position, Target.Character.Head.Position)
+        end
+    end
 end)
 
--- // 4. Tambahkan Tombol ke GUI Anda (Gunakan fungsi CreateButton sebelumnya)
-CreateButton("Silent Aim: OFF", function(btn)
-    _G.SilentAim = not _G.SilentAim
-    btn.Text = "Silent Aim: " .. (_G.SilentAim and "ON" or "OFF")
-    btn.BackgroundColor3 = _G.SilentAim and Color3.fromRGB(255, 0, 255) or Color3.fromRGB(50, 50, 50)
-end)
-
-CreateButton("Inf Ammo: OFF", function(btn)
-    _G.InfAmmo = not _G.InfAmmo
-    btn.Text = "Inf Ammo: " .. (_G.InfAmmo and "ON" or "OFF")
-    btn.BackgroundColor3 = _G.InfAmmo and Color3.fromRGB(0, 255, 255) or Color3.fromRGB(50, 50, 50)
-end)
+-- Pesan Berhasil
+print("D-Day Hub Berhasil Dimuat!")
